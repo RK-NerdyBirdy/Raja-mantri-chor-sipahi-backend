@@ -607,8 +607,8 @@
             'Sipahi': { points: 700, emoji: '🛡️' }
         };
 
-     // Initialize Socket Connection
-function initializeSocket() {
+        // Initialize Socket Connection
+        function initializeSocket() {
     // Always use your Render backend URL for production
     const serverUrl = window.location.hostname === 'localhost' ? 
         'http://localhost:3000' : 
@@ -694,9 +694,7 @@ function testConnection() {
             console.log('Connection test timeout');
         }, 5000);
     }
-}
 
-      
 
             // Room joining
             gameState.socket.on('room-joined', (data) => {
