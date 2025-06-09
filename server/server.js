@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
-      ? ["*"] // For Vercel deployment, you can restrict this to your domain later
+      ? ["https://your-frontend-domain.vercel.app"] // Replace with your Vercel domain
       : ["http://localhost:3000", "http://127.0.0.1:3000"],
     methods: ["GET", "POST"],
     credentials: true
