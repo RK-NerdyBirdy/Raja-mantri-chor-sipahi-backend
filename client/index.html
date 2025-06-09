@@ -607,28 +607,28 @@
             'Sipahi': { points: 700, emoji: '🛡️' }
         };
 
-        // Initialize Socket Connection
-        function initializeSocket() {
-            const serverUrl = window.location.hostname === 'localhost' ? 
-                'https://raja-mantri-chor-sipahi-backend.onrender.com' : 
-                window.location.origin;
-            
-            gameState.socket = io(serverUrl);
-            
-            // Connection status handlers
-            gameState.socket.on('connect', () => {
-                updateConnectionStatus(true);
-                console.log('Connected to server');
-            });
+     // Initialize Socket Connection
+function initializeSocket() {
+    // Always use your Render backend URL for production
+    const serverUrl = window.location.hostname === 'localhost' ? 
+        'http://localhost:3000' : 
+        'https://raja-mantri-chor-sipahi-backend.onrender.com';
+    
+    gameState.socket = io(serverUrl);
+    
+    // Connection status handlers
+    gameState.socket.on('connect', () => {
+        updateConnectionStatus(true);
+        console.log('Connected to server');
+    });
 
-            gameState.socket.on('disconnect', () => {
-                updateConnectionStatus(false);
-                showNotification('Disconnected from server', 'error');
-            });
+    gameState.socket.on('disconnect', () => {
+        updateConnectionStatus(false);
+        showNotification('Disconnected from server', 'error');
+    });
 
-            setupSocketListeners();
-        }
-
+    setupSocketListeners();
+}
         function updateConnectionStatus(connected) {
             const statusEl = document.getElementById('connection-status');
             if (connected) {
