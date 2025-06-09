@@ -614,44 +614,89 @@ function initializeSocket() {
         'http://localhost:3000' : 
         'https://raja-mantri-chor-sipahi-backend.onrender.com';
     
-    gameState.socket = io(serverUrl);
+    console.log('Connecting to:', serverUrl);
     
-    // Connection status handlers
+    // Enhanced Socket.IO configuration
+    gameState.socket = io(serverUrl, {
+        transports: ['websocket', 'polling'], // Allow fallback to polling
+        timeout: 20000, // 20 second timeout
+        forceNew: true, // Force new connection
+        reconnection: true, // Enable reconnection
+        reconnectionDelay: 1000, // Wait 1 second before reconnecting
+        reconnectionAttempts: 5, // Try 5 times
+        reconnectionDelayMax: 5000, // Max delay between attempts
+        autoConnect: true // Auto connect on creation
+    });
+    
+    // Connection status handlers with better logging
     gameState.socket.on('connect', () => {
         updateConnectionStatus(true);
-        console.log('Connected to server');
+        console.log('Connected to server successfully');
+        console.log('Socket ID:', gameState.socket.id);
     });
 
-    gameState.socket.on('disconnect', () => {
+    gameState.socket.on('disconnect', (reason) => {
         updateConnectionStatus(false);
-        showNotification('Disconnected from server', 'error');
+        console.log('Disconnected from server. Reason:', reason);
+        showNotification(`Disconnected: ${reason}`, 'error');
+    });
+
+    gameState.socket.on('connect_error', (error) => {
+        updateConnectionStatus(false);
+        console.error('Connection error:', error);
+        showNotification('Failed to connect to server. Please check your internet connection.', 'error');
+    });
+
+    gameState.socket.on('reconnect', (attemptNumber) => {
+        console.log('Reconnected after', attemptNumber, 'attempts');
+        showNotification('Reconnected to server!', 'success');
+    });
+
+    gameState.socket.on('reconnect_error', (error) => {
+        console.error('Reconnection error:', error);
+    });
+
+    gameState.socket.on('reconnect_failed', () => {
+        console.error('Failed to reconnect to server');
+        showNotification('Failed to reconnect. Please refresh the page.', 'error');
     });
 
     setupSocketListeners();
 }
-        function updateConnectionStatus(connected) {
-            const statusEl = document.getElementById('connection-status');
-            if (connected) {
-                statusEl.textContent = '🟢 Connected';
-                statusEl.className = 'connection-status connected';
-            } else {
-                statusEl.textContent = '🔴 Disconnected';
-                statusEl.className = 'connection-status disconnected';
-            }
-        }
 
-        // Socket Event Listeners
-        function setupSocketListeners() {
-            // Room creation
-            gameState.socket.on('room-created', (data) => {
-                if (data.success) {
-                    gameState.isHost = true;
-                    gameState.roomCode = data.roomCode;
-                    gameState.players = data.players;
-                    showLobby();
-                    showNotification('Room created successfully!', 'success');
-                }
-            });
+// Enhanced connection status update
+function updateConnectionStatus(connected) {
+    const statusEl = document.getElementById('connection-status');
+    if (connected) {
+        statusEl.textContent = '🟢 Connected';
+        statusEl.className = 'connection-status connected';
+        statusEl.style.color = '#4CAF50';
+    } else {
+        statusEl.textContent = '🔴 Disconnected';
+        statusEl.className = 'connection-status disconnected';
+        statusEl.style.color = '#f44336';
+    }
+}
+
+// Test connection function
+function testConnection() {
+    if (gameState.socket) {
+        console.log('Testing connection...');
+        gameState.socket.emit('ping', { timestamp: Date.now() });
+        
+        gameState.socket.once('pong', (data) => {
+            console.log('Pong received:', data);
+            showNotification('Connection test successful!', 'success');
+        });
+        
+        // Timeout after 5 seconds
+        setTimeout(() => {
+            console.log('Connection test timeout');
+        }, 5000);
+    }
+}
+
+      
 
             // Room joining
             gameState.socket.on('room-joined', (data) => {
