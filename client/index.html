@@ -610,10 +610,10 @@
         // Initialize Socket Connection
         function initializeSocket() {
             const serverUrl = window.location.hostname === 'localhost' ? 
-                'http://localhost:3000' : 
+                'https://raja-mantri-chor-sipahi-backend.onrender.com' : 
                 window.location.origin;
             
-            gameState.socket = io("https://raja-mantri-chor-sipahi-backend.onrender.com");
+            gameState.socket = io(serverUrl);
             
             // Connection status handlers
             gameState.socket.on('connect', () => {
