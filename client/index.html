@@ -580,35 +580,34 @@
     <!-- Socket.IO CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 
-    <script>
-        // Game State Management
-        let gameState = {
-            currentScreen: 'welcome',
-            socket: null,
-            isHost: false,
-            roomCode: '',
-            playerName: '',
-            playerAvatar: '👑',
-            players: [],
-            currentRound: 1,
-            totalRounds: 5,
-            playerCharacter: '',
-            scores: {},
-            gamePhase: 'waiting',
-            selectedSuspect: '',
-            isSipahi: false
-        };
+    <script>// Game State Management
+let gameState = {
+    currentScreen: 'welcome',
+    socket: null,
+    isHost: false,
+    roomCode: '',
+    playerName: '',
+    playerAvatar: '👑',
+    players: [],
+    currentRound: 1,
+    totalRounds: 5,
+    playerCharacter: '',
+    scores: {},
+    gamePhase: 'waiting',
+    selectedSuspect: '',
+    isSipahi: false
+};
 
-        // Character definitions
-        const CHARACTERS = {
-            'Raja': { points: 2000, emoji: '👑' },
-            'Mantri': { points: 900, emoji: '🎭' },
-            'Chor': { points: 0, emoji: '🗡️' },
-            'Sipahi': { points: 700, emoji: '🛡️' }
-        };
+// Character definitions
+const CHARACTERS = {
+    'Raja': { points: 2000, emoji: '👑' },
+    'Mantri': { points: 900, emoji: '🎭' },
+    'Chor': { points: 0, emoji: '🗡️' },
+    'Sipahi': { points: 700, emoji: '🛡️' }
+};
 
-        // Initialize Socket Connection
-        function initializeSocket() {
+// Initialize Socket Connection
+function initializeSocket() {
     // Always use your Render backend URL for production
     const serverUrl = window.location.hostname === 'localhost' ? 
         'http://localhost:3000' : 
@@ -661,565 +660,693 @@
         showNotification('Failed to reconnect. Please refresh the page.', 'error');
     });
 
+    // Setup all socket event listeners
     setupSocketListeners();
+}
+
+// Setup Socket Event Listeners - NOW PROPERLY DEFINED
+function setupSocketListeners() {
+    // Room creation
+    gameState.socket.on('room-created', (data) => {
+        if (data.success) {
+            gameState.isHost = true;
+            gameState.roomCode = data.roomCode;
+            gameState.players = data.players;
+            showLobby();
+            showNotification('Room created successfully!', 'success');
+        }
+    });
+
+    // Room joining
+    gameState.socket.on('room-joined', (data) => {
+        if (data.success) {
+            gameState.isHost = false;
+            gameState.roomCode = data.roomCode;
+            gameState.players = data.players;
+            showLobby();
+            showNotification('Joined room successfully!', 'success');
+        }
+    });
+
+    // Player joined
+    gameState.socket.on('player-joined', (data) => {
+        gameState.players = data.players;
+        updatePlayersDisplay();
+        updateStartButton();
+        showNotification(`${data.newPlayer} joined the room`, 'info');
+    });
+
+    // Player left
+    gameState.socket.on('player-left', (data) => {
+        gameState.players = data.players;
+        updatePlayersDisplay();
+        updateStartButton();
+        showNotification('A player left the room', 'info');
+    });
+
+    // New host assigned
+    gameState.socket.on('new-host', (data) => {
+        gameState.players = data.players;
+        const myPlayer = gameState.players.find(p => p.name === gameState.playerName);
+        if (myPlayer && myPlayer.isHost) {
+            gameState.isHost = true;
+            document.getElementById('host-controls').classList.remove('hidden');
+            showNotification('You are now the host!', 'info');
+        }
+        updatePlayersDisplay();
+        updateStartButton();
+    });
+
+    // Game started
+    gameState.socket.on('game-started', (data) => {
+        gameState.currentRound = data.currentRound;
+        gameState.totalRounds = data.totalRounds;
+        showScreen('game-screen');
+        document.getElementById('current-round-num').textContent = data.currentRound;
+        document.getElementById('total-rounds').textContent = data.totalRounds;
+    });
+
+    // Character assigned
+    gameState.socket.on('character-assigned', (data) => {
+        gameState.playerCharacter = data.character;
+        gameState.isSipahi = data.isSipahi;
+        showCharacterReveal();
+    });
+
+    // Round results
+    gameState.socket.on('round-results', (data) => {
+        gameState.scores = data.currentScores;
+        showRoundResults(data);
+    });
+
+    // Round started
+    gameState.socket.on('round-started', (data) => {
+        gameState.currentRound = data.currentRound;
+        document.getElementById('current-round-num').textContent = data.currentRound;
+        document.getElementById('total-rounds').textContent = data.totalRounds;
+    });
+
+    // Game finished
+    gameState.socket.on('game-finished', (data) => {
+        gameState.scores = data.finalScores;
+        showFinalResults(data);
+    });
+
+    // Error handling
+    gameState.socket.on('error', (data) => {
+        showNotification(data.message, 'error');
+    });
+
+    // Test connection response
+    gameState.socket.on('pong', (data) => {
+        const latency = Date.now() - data.timestamp;
+        console.log(`Pong received - Latency: ${latency}ms`);
+        showNotification(`Connection test successful! Latency: ${latency}ms`, 'success');
+    });
 }
 
 // Enhanced connection status update
 function updateConnectionStatus(connected) {
     const statusEl = document.getElementById('connection-status');
-    if (connected) {
-        statusEl.textContent = '🟢 Connected';
-        statusEl.className = 'connection-status connected';
-        statusEl.style.color = '#4CAF50';
-    } else {
-        statusEl.textContent = '🔴 Disconnected';
-        statusEl.className = 'connection-status disconnected';
-        statusEl.style.color = '#f44336';
+    if (statusEl) {
+        if (connected) {
+            statusEl.textContent = '🟢 Connected';
+            statusEl.className = 'connection-status connected';
+            statusEl.style.color = '#4CAF50';
+        } else {
+            statusEl.textContent = '🔴 Disconnected';
+            statusEl.className = 'connection-status disconnected';
+            statusEl.style.color = '#f44336';
+        }
     }
 }
 
 // Test connection function
 function testConnection() {
-    if (gameState.socket) {
+    if (gameState.socket && gameState.socket.connected) {
         console.log('Testing connection...');
         gameState.socket.emit('ping', { timestamp: Date.now() });
         
-        gameState.socket.once('pong', (data) => {
-            console.log('Pong received:', data);
-            showNotification('Connection test successful!', 'success');
-        });
-        
         // Timeout after 5 seconds
         setTimeout(() => {
-            console.log('Connection test timeout');
+            console.log('Connection test may have timed out');
         }, 5000);
+    } else {
+        showNotification('Not connected to server', 'error');
+    }
+}
+
+// Screen Management
+function showScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(screen => {
+        screen.classList.add('hidden');
+    });
+    const targetScreen = document.getElementById(screenId);
+    if (targetScreen) {
+        targetScreen.classList.remove('hidden');
+        gameState.currentScreen = screenId;
+    }
+}
+
+function showWelcome() {
+    showScreen('welcome-screen');
+}
+
+function showCreateRoom() {
+    showScreen('create-room-screen');
+}
+
+function showJoinRoom() {
+    showScreen('join-room-screen');
+}
+
+// Avatar Selection
+function selectAvatar(element, avatar) {
+    element.parentElement.querySelectorAll('.avatar-option').forEach(opt => {
+        opt.classList.remove('selected');
+    });
+    element.classList.add('selected');
+    gameState.playerAvatar = avatar;
+}
+
+// Room Management
+function createRoom() {
+    const hostName = document.getElementById('host-name').value.trim();
+    const roundsSelect = document.getElementById('rounds');
+    const rounds = roundsSelect ? parseInt(roundsSelect.value) : 5;
+    
+    if (!hostName) {
+        showNotification('Please enter your name', 'error');
+        return;
+    }
+    
+    if (!gameState.socket || !gameState.socket.connected) {
+        showNotification('Not connected to server. Please wait...', 'error');
+        return;
+    }
+    
+    gameState.playerName = hostName;
+    
+    console.log('Creating room with:', { name: hostName, avatar: gameState.playerAvatar, rounds });
+    
+    gameState.socket.emit('create-room', {
+        name: hostName,
+        avatar: gameState.playerAvatar,
+        rounds: rounds
+    });
+}
+
+function joinRoom() {
+    const playerName = document.getElementById('player-name').value.trim();
+    const roomCode = document.getElementById('room-code-input').value.trim().toUpperCase();
+    
+    if (!playerName) {
+        showNotification('Please enter your name', 'error');
+        return;
+    }
+    
+    if (!roomCode || roomCode.length !== 6) {
+        showNotification('Please enter a valid 6-digit room code', 'error');
+        return;
     }
 
+    if (!gameState.socket || !gameState.socket.connected) {
+        showNotification('Not connected to server. Please wait...', 'error');
+        return;
+    }
 
-            // Room joining
-            gameState.socket.on('room-joined', (data) => {
-                if (data.success) {
-                    gameState.isHost = false;
-                    gameState.roomCode = data.roomCode;
-                    gameState.players = data.players;
-                    showLobby();
-                    showNotification('Joined room successfully!', 'success');
-                }
-            });
+    gameState.playerName = playerName;
+    
+    console.log('Joining room with:', { name: playerName, avatar: gameState.playerAvatar, roomCode });
+    
+    gameState.socket.emit('join-room', {
+        name: playerName,
+        avatar: gameState.playerAvatar,
+        roomCode: roomCode
+    });
+}
 
-            // Player joined
-            gameState.socket.on('player-joined', (data) => {
-                gameState.players = data.players;
-                updatePlayersDisplay();
-                updateStartButton();
-                showNotification(`${data.newPlayer} joined the room`, 'info');
-            });
-
-            // Player left
-            gameState.socket.on('player-left', (data) => {
-                gameState.players = data.players;
-                updatePlayersDisplay();
-                updateStartButton();
-                showNotification('A player left the room', 'info');
-            });
-
-            // New host assigned
-            gameState.socket.on('new-host', (data) => {
-                gameState.players = data.players;
-                const myPlayer = gameState.players.find(p => p.name === gameState.playerName);
-                if (myPlayer && myPlayer.isHost) {
-                    gameState.isHost = true;
-                    document.getElementById('host-controls').classList.remove('hidden');
-                    showNotification('You are now the host!', 'info');
-                }
-                updatePlayersDisplay();
-                updateStartButton();
-            });
-
-            // Game started
-            gameState.socket.on('game-started', (data) => {
-                gameState.currentRound = data.currentRound;
-                gameState.totalRounds = data.totalRounds;
-                showScreen('game-screen');
-                document.getElementById('current-round-num').textContent = data.currentRound;
-                document.getElementById('total-rounds').textContent = data.totalRounds;
-            });
-
-            // Character assigned
-            gameState.socket.on('character-assigned', (data) => {
-                gameState.playerCharacter = data.character;
-                gameState.isSipahi = data.isSipahi;
-                showCharacterReveal();
-            });
-
-            // Round results
-            gameState.socket.on('round-results', (data) => {
-                gameState.scores = data.currentScores;
-                showRoundResults(data);
-            });
-
-            // Round started
-            gameState.socket.on('round-started', (data) => {
-                gameState.currentRound = data.currentRound;
-                document.getElementById('current-round-num').textContent = data.currentRound;
-                document.getElementById('total-rounds').textContent = data.totalRounds;
-            });
-
-            // Game finished
-            gameState.socket.on('game-finished', (data) => {
-                gameState.scores = data.finalScores;
-                showFinalResults(data);
-            });
-
-            // Error handling
-            gameState.socket.on('error', (data) => {
-                showNotification(data.message, 'error');
-            });
+function showLobby() {
+    const roomCodeDisplay = document.getElementById('room-code-display');
+    if (roomCodeDisplay) {
+        roomCodeDisplay.textContent = gameState.roomCode;
+    }
+    updatePlayersDisplay();
+    
+    if (gameState.isHost) {
+        const hostControls = document.getElementById('host-controls');
+        if (hostControls) {
+            hostControls.classList.remove('hidden');
         }
+        updateStartButton();
+    }
+    
+    showScreen('lobby-screen');
+}
 
-        // Screen Management
-        function showScreen(screenId) {
-            document.querySelectorAll('.screen').forEach(screen => {
-                screen.classList.add('hidden');
-            });
-            document.getElementById(screenId).classList.remove('hidden');
-            gameState.currentScreen = screenId;
-        }
+function updatePlayersDisplay() {
+    const container = document.getElementById('players-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    gameState.players.forEach(player => {
+        const playerElement = document.createElement('div');
+        playerElement.className = 'player-item';
+        playerElement.innerHTML = `
+            <div style="display: flex; align-items: center;">
+                <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}">${player.avatar}</div>
+                <span>${player.name} ${player.isHost ? '(Host)' : ''}</span>
+            </div>
+        `;
+        container.appendChild(playerElement);
+    });
+}
 
-        function showWelcome() {
-            showScreen('welcome-screen');
-        }
+function getAvatarColor(avatar) {
+    const colors = {
+        '👑': '#FF6B6B', '🛡️': '#4ECDC4', '🎭': '#45B7D1', '⚔️': '#96CEB4',
+        '🎪': '#FFEAA7', '🏰': '#DDA0DD', '🎨': '#98D8C8', '🎯': '#F7DC6F'
+    };
+    return colors[avatar] || '#cccc';
+}
 
-        function showCreateRoom() {
-            showScreen('create-room-screen');
-        }
+function updateStartButton() {
+    const startBtn = document.getElementById('start-game-btn');
+    if (!startBtn) return;
+    
+    if (gameState.isHost && gameState.players.length >= 2) {
+        startBtn.disabled = false;
+        startBtn.textContent = `Start Game (${gameState.players.length} players)`;
+    } else if (gameState.isHost) {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Need at least 2 players';
+    }
+}
 
-        function showJoinRoom() {
-            showScreen('join-room-screen');
-        }
+function copyRoomCode() {
+    navigator.clipboard.writeText(gameState.roomCode).then(() => {
+        showNotification('Room code copied!', 'success');
+    }).catch(() => {
+        showNotification('Failed to copy room code', 'error');
+    });
+}
 
-        // Avatar Selection
-        function selectAvatar(element, avatar) {
-            element.parentElement.querySelectorAll('.avatar-option').forEach(opt => {
-                opt.classList.remove('selected');
-            });
-            element.classList.add('selected');
-            gameState.playerAvatar = avatar;
-        }
+function leaveRoom() {
+    if (gameState.socket && gameState.socket.connected) {
+        gameState.socket.disconnect();
+    }
+    resetGameState();
+    showWelcome();
+}
 
-        // Room Management
-        function createRoom() {
-            const hostName = document.getElementById('host-name').value.trim();
-            const rounds = parseInt(document.getElementById('rounds').value);
-            
-            if (!hostName) {
-                showNotification('Please enter your name', 'error');
-                return;
-            }
-            
-            gameState.playerName = hostName;
-            
-            gameState.socket.emit('create-room', {
-                name: hostName,
-                avatar: gameState.playerAvatar,
-                rounds: rounds
-            });
-        }
+function resetGameState() {
+    gameState.currentScreen = 'welcome';
+    gameState.isHost = false;
+    gameState.roomCode = '';
+    gameState.players = [];
+    gameState.currentRound = 1;
+    gameState.playerCharacter = '';
+    gameState.scores = {};
+    gameState.gamePhase = 'waiting';
+    gameState.selectedSuspect = '';
+    gameState.isSipahi = false;
+}
 
-        function joinRoom() {
-            const playerName = document.getElementById('player-name').value.trim();
-            const roomCode = document.getElementById('room-code-input').value.trim().toUpperCase();
-            
-            if (!playerName) {
-                showNotification('Please enter your name', 'error');
-                return;
-            }
-            
-            if (!roomCode || roomCode.length !== 6) {
-                showNotification('Please enter a valid 6-digit room code', 'error');
-                return;
-            }
+// Game Functions
+function startGame() {
+    if (!gameState.isHost) return;
+    
+    const roundsSelect = document.getElementById('rounds');
+    const rounds = roundsSelect ? parseInt(roundsSelect.value) : 5;
+    
+    if (!gameState.socket || !gameState.socket.connected) {
+        showNotification('Not connected to server', 'error');
+        return;
+    }
+    
+    gameState.socket.emit('start-game', {
+        roomCode: gameState.roomCode,
+        rounds: rounds
+    });
+}
 
-            gameState.playerName = playerName;
-            
-            gameState.socket.emit('join-room', {
-                name: playerName,
-                avatar: gameState.playerAvatar,
-                roomCode: roomCode
-            });
-        }
+function showCharacterReveal() {
+    const elements = {
+        reveal: document.getElementById('character-reveal'),
+        sipahiTurn: document.getElementById('sipahi-turn'),
+        waitingTurn: document.getElementById('waiting-turn'),
+        roundResults: document.getElementById('round-results')
+    };
+    
+    if (elements.reveal) elements.reveal.classList.remove('hidden');
+    if (elements.sipahiTurn) elements.sipahiTurn.classList.add('hidden');
+    if (elements.waitingTurn) elements.waitingTurn.classList.add('hidden');
+    if (elements.roundResults) elements.roundResults.classList.add('hidden');
+    
+    const characterEl = document.getElementById('player-character');
+    const pointsEl = document.getElementById('character-points');
+    
+    if (characterEl && pointsEl) {
+        const character = CHARACTERS[gameState.playerCharacter];
+        characterEl.textContent = `${character.emoji} ${gameState.playerCharacter}`;
+        pointsEl.textContent = `Base Points: ${character.points}`;
+    }
+    
+    const phaseInfo = document.getElementById('phase-info');
+    if (phaseInfo) {
+        phaseInfo.textContent = 'Character Assignment Phase';
+    }
+}
 
-        function showLobby() {
-            document.getElementById('room-code-display').textContent = gameState.roomCode;
-            updatePlayersDisplay();
-            
-            if (gameState.isHost) {
-                document.getElementById('host-controls').classList.remove('hidden');
-                updateStartButton();
-            }
-            
-            showScreen('lobby-screen');
-        }
+function acknowledgeCharacter() {
+    const characterReveal = document.getElementById('character-reveal');
+    if (characterReveal) {
+        characterReveal.classList.add('hidden');
+    }
+    
+    if (gameState.isSipahi) {
+        showSipahiTurn();
+    } else {
+        showWaitingTurn();
+    }
+}
 
-        function updatePlayersDisplay() {
-            const container = document.getElementById('players-container');
-            container.innerHTML = '';
-            
-            gameState.players.forEach(player => {
-                const playerElement = document.createElement('div');
-                playerElement.className = 'player-item';
-                playerElement.innerHTML = `
-                    <div style="display: flex; align-items: center;">
-                        <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}">${player.avatar}</div>
-                        <span>${player.name} ${player.isHost ? '(Host)' : ''}</span>
-                    </div>
+function showSipahiTurn() {
+    const elements = {
+        sipahiTurn: document.getElementById('sipahi-turn'),
+        waitingTurn: document.getElementById('waiting-turn'),
+        phaseInfo: document.getElementById('phase-info')
+    };
+    
+    if (elements.sipahiTurn) elements.sipahiTurn.classList.remove('hidden');
+    if (elements.waitingTurn) elements.waitingTurn.classList.add('hidden');
+    if (elements.phaseInfo) elements.phaseInfo.textContent = 'Your Turn - Choose the Chor!';
+    
+    const suspectsContainer = document.getElementById('suspect-players');
+    if (suspectsContainer) {
+        suspectsContainer.innerHTML = '';
+        
+        gameState.players.forEach(player => {
+            if (player.name !== gameState.playerName) {
+                const playerCard = document.createElement('div');
+                playerCard.className = 'player-card';
+                playerCard.dataset.playerId = player.id || player.name;
+                playerCard.innerHTML = `
+                    <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}">${player.avatar}</div>
+                    <h4>${player.name}</h4>
+                    <p>Click to suspect</p>
                 `;
-                container.appendChild(playerElement);
-            });
-        }
-
-        function getAvatarColor(avatar) {
-            const colors = {
-                '👑': '#FF6B6B', '🛡️': '#4ECDC4', '🎭': '#45B7D1', '⚔️': '#96CEB4',
-                '🎪': '#FFEAA7', '🏰': '#DDA0DD', '🎨': '#98D8C8', '🎯': '#F7DC6F'
-            };
-            return colors[avatar] || '#cccc';
-        }
-
-        function updateStartButton() {
-            const startBtn = document.getElementById('start-game-btn');
-            if (gameState.isHost && gameState.players.length >= 2) {
-                startBtn.disabled = false;
-                startBtn.textContent = `Start Game (${gameState.players.length} players)`;
-            } else if (gameState.isHost) {
-                startBtn.disabled = true;
-                startBtn.textContent = 'Need at least 2 players';
+                playerCard.onclick = () => selectSuspect(playerCard, player.id || player.name);
+                suspectsContainer.appendChild(playerCard);
             }
-        }
+        });
+    }
+}
 
-        function copyRoomCode() {
-            navigator.clipboard.writeText(gameState.roomCode).then(() => {
-                showNotification('Room code copied!', 'success');
-            }).catch(() => {
-                showNotification('Failed to copy room code', 'error');
-            });
-        }
+function showWaitingTurn() {
+    const elements = {
+        waitingTurn: document.getElementById('waiting-turn'),
+        sipahiTurn: document.getElementById('sipahi-turn'),
+        phaseInfo: document.getElementById('phase-info')
+    };
+    
+    if (elements.waitingTurn) elements.waitingTurn.classList.remove('hidden');
+    if (elements.sipahiTurn) elements.sipahiTurn.classList.add('hidden');
+    if (elements.phaseInfo) elements.phaseInfo.textContent = 'Waiting for Sipahi\'s decision...';
+}
 
-        function leaveRoom() {
-            if (gameState.socket) {
-                gameState.socket.disconnect();
-            }
-            resetGameState();
-            showWelcome();
-        }
+function selectSuspect(cardElement, playerId) {
+    // Remove previous selection
+    document.querySelectorAll('.player-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
+    // Select new suspect
+    cardElement.classList.add('selected');
+    gameState.selectedSuspect = playerId;
+    
+    const guessBtn = document.getElementById('guess-btn');
+    if (guessBtn) {
+        guessBtn.disabled = false;
+    }
+}
 
-        function resetGameState() {
-            gameState.currentScreen = 'welcome';
-            gameState.isHost = false;
-            gameState.roomCode = '';
-            gameState.players = [];
-            gameState.currentRound = 1;
-            gameState.playerCharacter = '';
-            gameState.scores = {};
-            gameState.gamePhase = 'waiting';
-            gameState.selectedSuspect = '';
-            gameState.isSipahi = false;
-        }
+function makeGuess() {
+    if (!gameState.selectedSuspect) return;
+    
+    if (!gameState.socket || !gameState.socket.connected) {
+        showNotification('Not connected to server', 'error');
+        return;
+    }
+    
+    gameState.socket.emit('make-guess', {
+        roomCode: gameState.roomCode,
+        suspectedPlayerId: gameState.selectedSuspect
+    });
+    
+    const guessBtn = document.getElementById('guess-btn');
+    const phaseInfo = document.getElementById('phase-info');
+    
+    if (guessBtn) guessBtn.disabled = true;
+    if (phaseInfo) phaseInfo.textContent = 'Processing guess...';
+}
 
-        // Game Functions
-        function startGame() {
-            if (!gameState.isHost) return;
-            
-            const rounds = document.getElementById('rounds') ? 
-                parseInt(document.getElementById('rounds').value) : 5;
-            
-            gameState.socket.emit('start-game', {
-                roomCode: gameState.roomCode,
-                rounds: rounds
-            });
-        }
+function showRoundResults(data) {
+    const elements = {
+        roundResults: document.getElementById('round-results'),
+        sipahiTurn: document.getElementById('sipahi-turn'),
+        waitingTurn: document.getElementById('waiting-turn'),
+        characterReveal: document.getElementById('character-reveal')
+    };
+    
+    if (elements.roundResults) elements.roundResults.classList.remove('hidden');
+    if (elements.sipahiTurn) elements.sipahiTurn.classList.add('hidden');
+    if (elements.waitingTurn) elements.waitingTurn.classList.add('hidden');
+    if (elements.characterReveal) elements.characterReveal.classList.add('hidden');
+    
+    const resultMessage = document.getElementById('result-message');
+    if (!resultMessage) return;
+    
+    const results = data.results;
+    
+    // Find player names
+    const sipahiName = gameState.players.find(p => (p.id || p.name) === results.sipahiId)?.name || 'Unknown';
+    const chorName = gameState.players.find(p => (p.id || p.name) === results.chorId)?.name || 'Unknown';
+    const suspectedName = gameState.players.find(p => (p.id || p.name) === results.suspectedPlayerId)?.name || 'Unknown';
+    
+    if (results.isCorrectGuess) {
+        resultMessage.innerHTML = `
+            <div style="color: #4CAF50; font-size: 1.2rem; margin-bottom: 15px;">
+                ✅ Correct Guess!
+            </div>
+            <p><strong>${sipahiName}</strong> (Sipahi) correctly identified <strong>${chorName}</strong> as the Chor!</p>
+        `;
+    } else {
+        resultMessage.innerHTML = `
+            <div style="color: #f44336; font-size: 1.2rem; margin-bottom: 15px;">
+                ❌ Wrong Guess!
+            </div>
+            <p><strong>${sipahiName}</strong> (Sipahi) suspected <strong>${suspectedName}</strong>, but <strong>${chorName}</strong> was the real Chor!</p>
+        `;
+    }
+    
+    // Show character reveals
+    const charactersHtml = Object.entries(data.characters).map(([playerId, character]) => {
+        const playerName = gameState.players.find(p => (p.id || p.name) === playerId)?.name || 'Unknown';
+        const charData = CHARACTERS[character];
+        return `<p>${charData.emoji} <strong>${playerName}</strong> was the ${character}</p>`;
+    }).join('');
+    
+    resultMessage.innerHTML += `<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px;">
+        <h4>Character Reveals:</h4>
+        ${charactersHtml}
+    </div>`;
+    
+    updateScoresDisplay(data.currentScores);
+}
 
-        function showCharacterReveal() {
-            document.getElementById('character-reveal').classList.remove('hidden');
-            document.getElementById('sipahi-turn').classList.add('hidden');
-            document.getElementById('waiting-turn').classList.add('hidden');
-            document.getElementById('round-results').classList.add('hidden');
-            
-            const characterEl = document.getElementById('player-character');
-            const pointsEl = document.getElementById('character-points');
-            
-            const character = CHARACTERS[gameState.playerCharacter];
-            characterEl.textContent = `${character.emoji} ${gameState.playerCharacter}`;
-            pointsEl.textContent = `Base Points: ${character.points}`;
-            
-            document.getElementById('phase-info').textContent = 'Character Assignment Phase';
-        }
-
-        function acknowledgeCharacter() {
-            document.getElementById('character-reveal').classList.add('hidden');
-            
-            if (gameState.isSipahi) {
-                showSipahiTurn();
-            } else {
-                showWaitingTurn();
-            }
-        }
-
-        function showSipahiTurn() {
-            document.getElementById('sipahi-turn').classList.remove('hidden');
-            document.getElementById('waiting-turn').classList.add('hidden');
-            document.getElementById('phase-info').textContent = 'Your Turn - Choose the Chor!';
-            
-            const suspectsContainer = document.getElementById('suspect-players');
-            suspectsContainer.innerHTML = '';
-            
-            gameState.players.forEach(player => {
-                if (player.name !== gameState.playerName) {
-                    const playerCard = document.createElement('div');
-                    playerCard.className = 'player-card';
-                    playerCard.dataset.playerId = player.id || player.name;
-                    playerCard.innerHTML = `
-                        <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}">${player.avatar}</div>
-                        <h4>${player.name}</h4>
-                        <p>Click to suspect</p>
-                    `;
-                    playerCard.onclick = () => selectSuspect(playerCard, player.id || player.name);
-                    suspectsContainer.appendChild(playerCard);
-                }
-            });
-        }
-
-        function showWaitingTurn() {
-            document.getElementById('waiting-turn').classList.remove('hidden');
-            document.getElementById('sipahi-turn').classList.add('hidden');
-            document.getElementById('phase-info').textContent = 'Waiting for Sipahi\'s decision...';
-        }
-
-        function selectSuspect(cardElement, playerId) {
-            // Remove previous selection
-            document.querySelectorAll('.player-card').forEach(card => {
-                card.classList.remove('selected');
-            });
-            
-            // Select new suspect
-            cardElement.classList.add('selected');
-            gameState.selectedSuspect = playerId;
-            
-            document.getElementById('guess-btn').disabled = false;
-        }
-
-        function makeGuess() {
-            if (!gameState.selectedSuspect) return;
-            
-            gameState.socket.emit('make-guess', {
-                roomCode: gameState.roomCode,
-                suspectedPlayerId: gameState.selectedSuspect
-            });
-            
-            document.getElementById('guess-btn').disabled = true;
-            document.getElementById('phase-info').textContent = 'Processing guess...';
-        }
-
-        function showRoundResults(data) {
-            document.getElementById('round-results').classList.remove('hidden');
-            document.getElementById('sipahi-turn').classList.add('hidden');
-            document.getElementById('waiting-turn').classList.add('hidden');
-            document.getElementById('character-reveal').classList.add('hidden');
-            
-            const resultMessage = document.getElementById('result-message');
-            const results = data.results;
-            
-            // Find player names
-            const sipahiName = gameState.players.find(p => (p.id || p.name) === results.sipahiId)?.name || 'Unknown';
-            const chorName = gameState.players.find(p => (p.id || p.name) === results.chorId)?.name || 'Unknown';
-            const suspectedName = gameState.players.find(p => (p.id || p.name) === results.suspectedPlayerId)?.name || 'Unknown';
-            
-            if (results.isCorrectGuess) {
-                resultMessage.innerHTML = `
-                    <div style="color: #4CAF50; font-size: 1.2rem; margin-bottom: 15px;">
-                        ✅ Correct Guess!
-                    </div>
-                    <p><strong>${sipahiName}</strong> (Sipahi) correctly identified <strong>${chorName}</strong> as the Chor!</p>
-                `;
-            } else {
-                resultMessage.innerHTML = `
-                    <div style="color: #f44336; font-size: 1.2rem; margin-bottom: 15px;">
-                        ❌ Wrong Guess!
-                    </div>
-                    <p><strong>${sipahiName}</strong> (Sipahi) suspected <strong>${suspectedName}</strong>, but <strong>${chorName}</strong> was the real Chor!</p>
-                `;
-            }
-            
-            // Show character reveals
-            const charactersHtml = Object.entries(data.characters).map(([playerId, character]) => {
-                const playerName = gameState.players.find(p => (p.id || p.name) === playerId)?.name || 'Unknown';
-                const charData = CHARACTERS[character];
-                return `<p>${charData.emoji} <strong>${playerName}</strong> was the ${character}</p>`;
-            }).join('');
-            
-            resultMessage.innerHTML += `<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px;">
-                <h4>Character Reveals:</h4>
-                ${charactersHtml}
-            </div>`;
-            
-            updateScoresDisplay(data.currentScores);
-        }
-
-        function updateScoresDisplay(scores) {
-            const container = document.getElementById('scores-container');
-            container.innerHTML = '';
-            
-            // Sort players by score
-            const sortedScores = Object.entries(scores)
-                .map(([playerId, score]) => {
-                    const player = gameState.players.find(p => (p.id || p.name) === playerId);
-                    return { playerId, score, name: player?.name || 'Unknown', avatar: player?.avatar || '👤' };
-                })
-                .sort((a, b) => b.score - a.score);
-            
-            sortedScores.forEach((player, index) => {
-                const scoreItem = document.createElement('div');
-                scoreItem.className = 'score-item';
-                scoreItem.innerHTML = `
-                    <div style="display: flex; align-items: center;">
-                        <span style="margin-right: 10px; font-weight: bold; color: ${index === 0 ? '#ffd700' : '#666'};">
-                            ${index + 1}.
-                        </span>
-                        <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}; width: 30px; height: 30px; font-size: 16px; margin-right: 10px;">
-                            ${player.avatar}
-                        </div>
-                        <span>${player.name}</span>
-                    </div>
-                    <span style="font-weight: bold; color: ${index === 0 ? '#ffd700' : '#333'};">
-                        ${player.score} pts
-                    </span>
-                `;
-                container.appendChild(scoreItem);
-            });
-        }
-
-        function nextRound() {
-            if (gameState.isHost) {
-                gameState.socket.emit('next-round', {
-                    roomCode: gameState.roomCode
-                });
-            }
-            
-            // Reset round state
-            gameState.selectedSuspect = '';
-            document.getElementById('round-results').classList.add('hidden');
-        }
-
-        function showFinalResults(data) {
-            showScreen('final-results-screen');
-            
-            const winnerEl = document.getElementById('winner-announcement');
-            const winner = data.winner;
-            
-            winnerEl.innerHTML = `
-                <div style="font-size: 2rem; margin-bottom: 10px;">
-                    ${getAvatarColor(winner.avatar)} ${winner.avatar}
+function updateScoresDisplay(scores) {
+    const container = document.getElementById('scores-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    // Sort players by score
+    const sortedScores = Object.entries(scores)
+        .map(([playerId, score]) => {
+            const player = gameState.players.find(p => (p.id || p.name) === playerId);
+            return { playerId, score, name: player?.name || 'Unknown', avatar: player?.avatar || '👤' };
+        })
+        .sort((a, b) => b.score - a.score);
+    
+    sortedScores.forEach((player, index) => {
+        const scoreItem = document.createElement('div');
+        scoreItem.className = 'score-item';
+        scoreItem.innerHTML = `
+            <div style="display: flex; align-items: center;">
+                <span style="margin-right: 10px; font-weight: bold; color: ${index === 0 ? '#ffd700' : '#666'};">
+                    ${index + 1}.
+                </span>
+                <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}; width: 30px; height: 30px; font-size: 16px; margin-right: 10px;">
+                    ${player.avatar}
                 </div>
-                <h3>${winner.name} Wins!</h3>
-                <p>Final Score: ${winner.score} points</p>
-            `;
-            
-            // Show final scores
-            const finalContainer = document.getElementById('final-scores-container');
-            finalContainer.innerHTML = '';
-            
-            const sortedFinalScores = Object.entries(data.finalScores)
-                .map(([playerId, score]) => {
-                    const player = gameState.players.find(p => (p.id || p.name) === playerId);
-                    return { playerId, score, name: player?.name || 'Unknown', avatar: player?.avatar || '👤' };
-                })
-                .sort((a, b) => b.score - a.score);
-            
-            sortedFinalScores.forEach((player, index) => {
-                const scoreItem = document.createElement('div');
-                scoreItem.className = 'score-item';
-                scoreItem.innerHTML = `
-                    <div style="display: flex; align-items: center;">
-                        <span style="margin-right: 10px; font-weight: bold; font-size: 1.2rem; color: ${index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : index === 2 ? '#cd7f32' : '#666'};">
-                            ${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
-                        </span>
-                        <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}; width: 35px; height: 35px; font-size: 18px; margin-right: 15px;">
-                            ${player.avatar}
-                        </div>
-                        <span style="font-size: 1.1rem;">${player.name}</span>
-                    </div>
-                    <span style="font-weight: bold; font-size: 1.2rem; color: ${index === 0 ? '#ffd700' : '#333'};">
-                        ${player.score} pts
+                <span>${player.name}</span>
+            </div>
+            <span style="font-weight: bold; color: ${index === 0 ? '#ffd700' : '#333'};">
+                ${player.score} pts
+            </span>
+        `;
+        container.appendChild(scoreItem);
+    });
+}
+
+function nextRound() {
+    if (gameState.isHost) {
+        if (!gameState.socket || !gameState.socket.connected) {
+            showNotification('Not connected to server', 'error');
+            return;
+        }
+        
+        gameState.socket.emit('next-round', {
+            roomCode: gameState.roomCode
+        });
+    }
+    
+    // Reset round state
+    gameState.selectedSuspect = '';
+    const roundResults = document.getElementById('round-results');
+    if (roundResults) {
+        roundResults.classList.add('hidden');
+    }
+}
+
+function showFinalResults(data) {
+    showScreen('final-results-screen');
+    
+    const winnerEl = document.getElementById('winner-announcement');
+    if (winnerEl) {
+        const winner = data.winner;
+        
+        winnerEl.innerHTML = `
+            <div style="font-size: 2rem; margin-bottom: 10px;">
+                ${winner.avatar}
+            </div>
+            <h3>${winner.name} Wins!</h3>
+            <p>Final Score: ${winner.score} points</p>
+        `;
+    }
+    
+    // Show final scores
+    const finalContainer = document.getElementById('final-scores-container');
+    if (finalContainer) {
+        finalContainer.innerHTML = '';
+        
+        const sortedFinalScores = Object.entries(data.finalScores)
+            .map(([playerId, score]) => {
+                const player = gameState.players.find(p => (p.id || p.name) === playerId);
+                return { playerId, score, name: player?.name || 'Unknown', avatar: player?.avatar || '👤' };
+            })
+            .sort((a, b) => b.score - a.score);
+        
+        sortedFinalScores.forEach((player, index) => {
+            const scoreItem = document.createElement('div');
+            scoreItem.className = 'score-item';
+            scoreItem.innerHTML = `
+                <div style="display: flex; align-items: center;">
+                    <span style="margin-right: 10px; font-weight: bold; font-size: 1.2rem; color: ${index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : index === 2 ? '#cd7f32' : '#666'};">
+                        ${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
                     </span>
-                `;
-                finalContainer.appendChild(scoreItem);
-            });
-        }
-
-        function playAgain() {
-            if (gameState.isHost) {
-                // Reset game state but keep room
-                gameState.currentRound = 1;
-                gameState.playerCharacter = '';
-                gameState.gamePhase = 'waiting';
-                gameState.selectedSuspect = '';
-                gameState.isSipahi = false;
-                
-                showLobby();
-            } else {
-                showNotification('Only the host can start a new game', 'info');
-            }
-        }
-
-        function returnToMenu() {
-            leaveRoom();
-        }
-
-        // Utility Functions
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease-out forwards';
-                setTimeout(() => {
-                    document.body.removeChild(notification);
-                }, 300);
-            }, 3000);
-        }
-
-        // Initialize the game when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeSocket();
-            
-            // Handle enter key in input fields
-            document.getElementById('host-name').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') createRoom();
-            });
-            
-            document.getElementById('player-name').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') joinRoom();
-            });
-            
-            document.getElementById('room-code-input').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') joinRoom();
-            });
-            
-            // Auto-format room code input
-            document.getElementById('room-code-input').addEventListener('input', function(e) {
-                e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
-            });
+                    <div class="player-avatar" style="background: ${getAvatarColor(player.avatar)}; width: 35px; height: 35px; font-size: 18px; margin-right: 15px;">
+                        ${player.avatar}
+                    </div>
+                    <span style="font-size: 1.1rem;">${player.name}</span>
+                </div>
+                <span style="font-weight: bold; font-size: 1.2rem; color: ${index === 0 ? '#ffd700' : '#333'};">
+                    ${player.score} pts
+                </span>
+            `;
+            finalContainer.appendChild(scoreItem);
         });
+    }
+}
 
-        // Handle page refresh/close
-        window.addEventListener('beforeunload', function() {
-            if (gameState.socket && gameState.socket.connected) {
-                gameState.socket.disconnect();
+function playAgain() {
+    if (gameState.isHost) {
+        // Reset game state but keep room
+        gameState.currentRound = 1;
+        gameState.playerCharacter = '';
+        gameState.gamePhase = 'waiting';
+        gameState.selectedSuspect = '';
+        gameState.isSipahi = false;
+        
+        showLobby();
+    } else {
+        showNotification('Only the host can start a new game', 'info');
+    }
+}
+
+function returnToMenu() {
+    leaveRoom();
+}
+
+// Utility Functions
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-out forwards';
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
             }
+        }, 300);
+    }, 3000);
+}
+
+// Initialize the game when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing socket...');
+    initializeSocket();
+    
+    // Handle enter key in input fields
+    const hostNameInput = document.getElementById('host-name');
+    if (hostNameInput) {
+        hostNameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') createRoom();
         });
+    }
+    
+    const playerNameInput = document.getElementById('player-name');
+    if (playerNameInput) {
+        playerNameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') joinRoom();
+        });
+    }
+    
+    const roomCodeInput = document.getElementById('room-code-input');
+    if (roomCodeInput) {
+        roomCodeInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') joinRoom();
+        });
+        
+        // Auto-format room code input
+        roomCodeInput.addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
+        });
+    }
+});
+
+// Handle page refresh/close
+window.addEventListener('beforeunload', function() {
+    if (gameState.socket && gameState.socket.connected) {
+        gameState.socket.disconnect();
+    }
+});
     </script>
 </body>
 </html>
