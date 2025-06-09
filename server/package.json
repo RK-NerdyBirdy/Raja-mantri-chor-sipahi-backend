@@ -1,0 +1,26 @@
+{
+  "name": "raja-mantri-game",
+  "version": "1.0.0",
+  "description": "Raja Mantri Chor Sipahi - Multiplayer Online Game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "build": "echo 'No build needed for this project'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": ["game", "multiplayer", "socket.io", "raja-mantri"],
+  "author": "Your Name",
+  "license": "MIT"
+}
